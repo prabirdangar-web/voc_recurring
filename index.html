@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VOC Recurring Grant – Monthly Requisition</title>
+<style>
+:root{--navy:#14305c;--ink:#1b2433;--line:#c9d3e3;--bg:#f3f6fb;--ok:#17703a;--warn:#a85a00;--bad:#b3261e;--card:#fff}
+@media (prefers-color-scheme:dark){:root{--navy:#9db8ea;--ink:#e6ebf5;--line:#34425c;--bg:#0f1624;--card:#17213a;--ok:#5fd08a;--warn:#f0b35a;--bad:#ff8a80}}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.45 "Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink)}
+.wrap{max-width:1100px;margin:0 auto;padding:16px}
+h1{font-size:19px;margin:0 0 2px;color:var(--navy)} .sub{margin:0 0 14px;opacity:.75}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:14px}
+.card h2{font-size:15px;margin:0 0 10px;color:var(--navy)}
+.months{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}
+@media(max-width:700px){.months{grid-template-columns:repeat(3,1fr)}}
+.m{display:flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer;user-select:none}
+.m input{margin:0} .m.on{border-color:var(--navy);background:rgba(20,48,92,.08);font-weight:600}
+.m .tag{margin-left:auto;font-size:11px;color:var(--ok)}
+.drop{border:2px dashed var(--line);border-radius:8px;padding:18px;text-align:center;cursor:pointer}
+.drop.over{border-color:var(--navy);background:rgba(20,48,92,.06)}
+.drop b{color:var(--navy)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+button{font:inherit;border:1px solid var(--navy);background:var(--navy);color:#fff;border-radius:6px;padding:7px 12px;cursor:pointer}
+@media (prefers-color-scheme:dark){button{color:#0f1624}}
+button.alt{background:transparent;color:var(--navy)} button:disabled{opacity:.4;cursor:not-allowed}
+select,input[type=number]{font:inherit;padding:5px 6px;border:1px solid var(--line);border-radius:5px;background:var(--card);color:var(--ink)}
+table{width:100%;border-collapse:collapse} th,td{border:1px solid var(--line);padding:6px 8px;text-align:left}
+th{background:rgba(20,48,92,.08);color:var(--navy)} td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+td input{width:90px;text-align:right}
+tr.tot td{font-weight:700;background:rgba(20,48,92,.06)}
+.authbar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px}.authbar input{font:inherit;padding:5px 6px;border:1px solid var(--line);border-radius:5px;background:var(--card);color:var(--ink)}
+.msg{font-size:13px;margin:6px 0} .ok{color:var(--ok)} .warn{color:var(--warn)} .bad{color:var(--bad)}
+.files .f{display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}
+.files .f:last-child{border:0} .f .nm{flex:1;word-break:break-all}
+.scroll{overflow-x:auto}
+.empty{opacity:.65;padding:10px 0}
+@media print{body{background:#fff;color:#000} .noprint{display:none!important} .card{border:0;padding:0} th,td{border-color:#000}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>VOC Recurring Grant – Requisition Break-up</h1>
+  <p class="sub">FY 2026-27 • Select month(s), then add one or more requisition Excel files.</p>
+  <div class="authbar noprint">
+    <span id="authStatus" class="msg">Not signed in — sign in to save to the cheque register</span>
+    <input type="email" id="authEmail" placeholder="Admin email"><input type="password" id="authPass" placeholder="Password">
+    <button id="authBtn">Sign In</button><button class="alt" id="outBtn" style="display:none">Sign Out</button>
+  </div>
+
+  <div class="card noprint">
+    <h2>1. Select months</h2>
+    <div class="row" style="margin-bottom:8px">
+      <button class="alt" id="allM">Select all</button>
+      <button class="alt" id="noM">Clear</button>
+    </div>
+    <div class="months" id="months"></div>
+  </div>
+
+  <div class="card noprint">
+    <h2>2. Add Excel file(s)</h2>
+    <div class="drop" id="drop"><b>Drop .xls / .xlsx files here</b> or click to choose (multiple allowed)</div>
+    <input type="file" id="file" accept=".xls,.xlsx,.html,.htm" multiple hidden>
+    <div class="files" id="files"></div>
+    <div class="msg" id="fmsg"></div>
+  </div>
+
+  <div class="card">
+    <h2>3. Month-wise break-up</h2>
+    <div class="scroll" id="out"><div class="empty">Select a month and add a file to see data.</div></div>
+    <div class="row noprint" style="margin-top:10px">
+      <button id="print">Print</button>
+      <button class="alt" id="csv">Download CSV</button>
+      <button class="alt" id="json">Copy JSON</button>
+      <button id="cloud">☁ Save to Cheque Register (VOC)</button>
+      <span class="msg" id="cmsg"></span>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<script>
+const MONTHS=["April","May","June","July","August","September","October","November","December","January","February","March"];
+const FY="2026-2027";
+// month -> {adm:[{label,amt}], oth:[{label,amt}], deduction, src}
+const DATA={};            // imported data by month
+const SEL=new Set();      // selected months
+const FILES=[];           // {name, month, ok}
+
+const $=id=>document.getElementById(id);
+const inr=n=>Number(n||0).toLocaleString('en-IN');
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function monthFromName(n){
+  const l=n.toLowerCase();
+  return MONTHS.find(m=>l.includes(m.toLowerCase()))||'';
+}
+
+function renderMonths(){
+  $('months').innerHTML=MONTHS.map(m=>`<label class="m ${SEL.has(m)?'on':''}"><input type="checkbox" data-m="${m}" ${SEL.has(m)?'checked':''}>${m.slice(0,3)}${DATA[m]?'<span class="tag">✓ data</span>':''}</label>`).join('');
+  $('months').querySelectorAll('input').forEach(i=>i.onchange=()=>{i.checked?SEL.add(i.dataset.m):SEL.delete(i.dataset.m);renderMonths();renderOut()});
+}
+
+function renderFiles(){
+  $('files').innerHTML=FILES.map((f,i)=>`<div class="f"><span class="nm">${esc(f.name)}</span>
+   ${f.ok?`<select data-i="${i}">${['<option value="">— month —</option>'].concat(MONTHS.map(m=>`<option ${m===f.month?'selected':''}>${m}</option>`)).join('')}</select>`:'<span class="bad">could not read</span>'}
+   <button class="alt" data-x="${i}">Remove</button></div>`).join('');
+  $('files').querySelectorAll('select').forEach(s=>s.onchange=()=>assign(+s.dataset.i,s.value));
+  $('files').querySelectorAll('[data-x]').forEach(b=>b.onclick=()=>{const f=FILES[+b.dataset.x];if(f.month&&DATA[f.month]&&DATA[f.month].src===f.name)delete DATA[f.month];FILES.splice(+b.dataset.x,1);renderFiles();renderMonths();renderOut()});
+}
+
+function assign(i,month){
+  const f=FILES[i];
+  if(f.month&&DATA[f.month]&&DATA[f.month].src===f.name)delete DATA[f.month];
+  f.month=month;
+  if(month){DATA[month]=f.parsed;DATA[month].src=f.name;SEL.add(month)}
+  renderFiles();renderMonths();renderOut();
+}
+
+// ---- parsing: handles HTML-table ".xls" (as exported by the grant portal) and real xls/xlsx ----
+function rowsFromHtml(text){
+  const doc=new DOMParser().parseFromString(text,'text/html');
+  return [...doc.querySelectorAll('tr')].map(tr=>[...tr.children].map(c=>c.textContent.replace(/\s+/g,' ').trim()));
+}
+function parseRows(rows){
+  const adm=[],oth=[];let deduction=0,adm_t=null,oth_t=null,net=null,grand=null;
+  const num=v=>{const n=parseFloat(String(v).replace(/,/g,''));return isNaN(n)?null:n};
+  for(const r of rows){
+    const c=r.map(x=>String(x==null?'':x).trim());
+    const up=c.map(x=>x.toUpperCase());
+    const left=c.slice(0,2),right=c.slice(3,5);
+    // totals
+    if(up[0]==='TOTAL'&&num(c[1])!=null)adm_t=num(c[1]);
+    if(up[3]&&up[3].startsWith('TOTAL')&&num(c[4])!=null)oth_t=num(c[4]);
+    if(up[3]&&up[3].startsWith('GRAND TOTAL'))grand=num(c[4]);
+    if(up[3]&&up[3].startsWith('DEDUCTION'))deduction=num(c[4])||0;
+    if(up[3]&&up[3].startsWith('NET AMOUNT'))net=num(c[4]);
+    if(up[0]==='TOTAL'||up[0].startsWith('BREAK UP')||up[0]==='ADMINISTRATIVE HONORIUM')continue;
+    if(left[0]&&num(left[1])!=null&&!/TOTAL|DEDUCTION|NET AMOUNT/.test(up[0]))adm.push({label:left[0],amt:num(left[1])});
+    if(right[0]&&num(right[1])!=null&&!/TOTAL|DEDUCTION|NET AMOUNT/.test(right[0].toUpperCase()))oth.push({label:right[0],amt:num(right[1])});
+  }
+  if(!adm.length&&!oth.length)return null;
+  return {adm,oth,deduction,fileTotals:{adm_t,oth_t,grand,net}};
+}
+async function readFile(file){
+  const buf=await file.arrayBuffer();
+  const head=new TextDecoder('utf-8',{fatal:false}).decode(buf.slice(0,400)).toLowerCase();
+  let rows;
+  if(head.includes('<table')||head.includes('<html')||head.includes('<tr')){
+    rows=rowsFromHtml(new TextDecoder('utf-8').decode(buf));
+  }else{
+    const wb=XLSX.read(buf,{type:'array'});
+    rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,defval:''});
+  }
+  return parseRows(rows);
+}
+async function addFiles(list){
+  let ok=0,bad=0;
+  for(const file of list){
+    let parsed=null;
+    try{parsed=await readFile(file)}catch(e){}
+    const f={name:file.name,month:'',ok:!!parsed,parsed};
+    FILES.push(f);
+    if(!parsed){bad++;continue}
+    ok++;
+    const m=monthFromName(file.name);
+    if(m)assign(FILES.length-1,m);
+  }
+  renderFiles();renderMonths();renderOut();
+  const unassigned=FILES.filter(f=>f.ok&&!f.month).length;
+  $('fmsg').innerHTML=`<span class="ok">${ok} file(s) read.</span>`+(bad?` <span class="bad">${bad} unreadable.</span>`:'')+(unassigned?` <span class="warn">${unassigned} file(s) need a month – pick it in the dropdown.</span>`:'');
+}
+
+// ---- output ----
+function totals(d){
+  const a=d.adm.reduce((s,x)=>s+x.amt,0),o=d.oth.reduce((s,x)=>s+x.amt,0);
+  return {a,o,g:a+o,net:a+o-(d.deduction||0)};
+}
+function renderOut(){
+  const ms=MONTHS.filter(m=>SEL.has(m));
+  if(!ms.length){$('out').innerHTML='<div class="empty">Select a month and add a file to see data.</div>';return}
+  let html='',gA=0,gO=0,gD=0,gN=0,cnt=0;
+  const missing=[];
+  for(const m of ms){
+    const d=DATA[m];
+    if(!d){missing.push(m);continue}
+    cnt++;
+    const t=totals(d);gA+=t.a;gO+=t.o;gD+=d.deduction||0;gN+=t.net;
+    const n=Math.max(d.adm.length,d.oth.length);
+    let rows='';
+    for(let i=0;i<n;i++){
+      const a=d.adm[i],o=d.oth[i];
+      rows+=`<tr><td>${a?esc(a.label):''}</td><td class="n">${a?`<input type="number" value="${a.amt}" data-m="${m}" data-k="adm" data-i="${i}">`:''}</td>
+      <td>${o?esc(o.label):''}</td><td class="n">${o?`<input type="number" value="${o.amt}" data-m="${m}" data-k="oth" data-i="${i}">`:''}</td></tr>`;
+    }
+    const chk=d.fileTotals&&d.fileTotals.net!=null&&d.fileTotals.net!==t.net?`<span class="warn"> • file says net ${inr(d.fileTotals.net)}</span>`:'';
+    html+=`<h3 style="margin:14px 0 6px;color:var(--navy)">Break-up of requisition of recurring expense – ${m} of ${FY}</h3>
+    <table><thead><tr><th>Administrative honorium</th><th class="n">₹</th><th>Other recurring expenses</th><th class="n">₹</th></tr></thead><tbody>${rows}
+    <tr class="tot"><td>TOTAL</td><td class="n">${inr(t.a)}</td><td>TOTAL</td><td class="n">${inr(t.o)}</td></tr>
+    <tr class="tot"><td colspan="3" class="n">GRAND TOTAL</td><td class="n">${inr(t.g)}</td></tr>
+    <tr class="tot"><td colspan="3" class="n">DEDUCTION</td><td class="n">${inr(d.deduction||0)}</td></tr>
+    <tr class="tot"><td colspan="3" class="n">NET AMOUNT</td><td class="n">${inr(t.net)}</td></tr></tbody></table>
+    <div class="msg">Source: ${esc(d.src||'')}${chk}</div>`;
+  }
+  if(cnt>1){
+    html=`<table style="margin-bottom:10px"><thead><tr><th>Summary (${cnt} months)</th><th class="n">Admin honorium</th><th class="n">Other expenses</th><th class="n">Deduction</th><th class="n">Net</th></tr></thead><tbody>
+    ${ms.filter(m=>DATA[m]).map(m=>{const t=totals(DATA[m]);return`<tr><td>${m}</td><td class="n">${inr(t.a)}</td><td class="n">${inr(t.o)}</td><td class="n">${inr(DATA[m].deduction||0)}</td><td class="n">${inr(t.net)}</td></tr>`}).join('')}
+    <tr class="tot"><td>TOTAL</td><td class="n">${inr(gA)}</td><td class="n">${inr(gO)}</td><td class="n">${inr(gD)}</td><td class="n">${inr(gN)}</td></tr></tbody></table>`+html;
+  }
+  if(missing.length)html+=`<div class="msg warn noprint">No file yet for: ${missing.join(', ')}</div>`;
+  $('out').innerHTML=html||`<div class="msg warn">No file yet for: ${missing.join(', ')}</div>`;
+  $('out').querySelectorAll('input[data-k]').forEach(i=>i.onchange=()=>{DATA[i.dataset.m][i.dataset.k][+i.dataset.i].amt=parseFloat(i.value)||0;renderOut()});
+}
+
+// ---- export ----
+function exportObj(){return MONTHS.filter(m=>SEL.has(m)&&DATA[m]).map(m=>({month:m,fy:FY,...DATA[m],...totals(DATA[m])}))}
+$('csv').onclick=()=>{
+  const lines=[['Month','Section','Item','Amount']];
+  exportObj().forEach(o=>{o.adm.forEach(x=>lines.push([o.month,'Administrative Honorium',x.label,x.amt]));o.oth.forEach(x=>lines.push([o.month,'Other Recurring',x.label,x.amt]));lines.push([o.month,'Deduction','',o.deduction||0],[o.month,'Net Amount','',o.net])});
+  const csv=lines.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='voc_recurring_grant_'+FY+'.csv';a.click();
+};
+$('json').onclick=async()=>{try{await navigator.clipboard.writeText(JSON.stringify(exportObj(),null,2));$('fmsg').innerHTML='<span class="ok">JSON copied.</span>'}catch(e){$('fmsg').innerHTML='<span class="bad">Copy blocked by browser.</span>'}};
+$('print').onclick=()=>window.print();
+$('allM').onclick=()=>{MONTHS.forEach(m=>SEL.add(m));renderMonths();renderOut()};
+$('noM').onclick=()=>{SEL.clear();renderMonths();renderOut()};
+
+// ---- file input ----
+const drop=$('drop'),inp=$('file');
+drop.onclick=()=>inp.click();
+inp.onchange=()=>{addFiles([...inp.files]);inp.value=''};
+['dragenter','dragover'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.add('over')}));
+['dragleave','drop'].forEach(e=>drop.addEventListener(e,ev=>{ev.preventDefault();drop.classList.remove('over')}));
+drop.addEventListener('drop',ev=>addFiles([...ev.dataTransfer.files]));
+
+// ---- cloud: same Firebase project as the cheque register; one doc per month in vocGrantMonths/YYYY-MM ----
+firebase.initializeApp({apiKey:"AIzaSyCiqQFsnbSi6eCgUI_W3NTybzIkRmCI_54",authDomain:"tfhs-portal.firebaseapp.com",projectId:"tfhs-portal",storageBucket:"tfhs-portal.firebasestorage.app",messagingSenderId:"316041012204",appId:"1:316041012204:web:04ee8b19374c60f63716c9"});
+const auth=firebase.auth(),db=firebase.firestore();let user=null;
+const ymOf=m=>{const i=MONTHS.indexOf(m),y=+FY.slice(0,4);return (i>=9?y+1:y)+'-'+String(((i+3)%12)+1).padStart(2,'0')};
+auth.onAuthStateChanged(u=>{user=u;const on=!!u;$('authStatus').textContent=on?'Signed in: '+u.email:'Not signed in — sign in to save to the cheque register';
+  ['authEmail','authPass','authBtn'].forEach(i=>$(i).style.display=on?'none':'inline-block');$('outBtn').style.display=on?'inline-block':'none'});
+$('authBtn').onclick=()=>{const e=$('authEmail').value.trim(),p=$('authPass').value;if(!e||!p){alert('Enter email and password.');return}auth.signInWithEmailAndPassword(e,p).then(()=>$('authPass').value='').catch(x=>alert('Sign-in failed: '+x.message))};
+$('outBtn').onclick=()=>auth.signOut();
+$('cloud').onclick=async()=>{
+  if(!user){alert('Please sign in first (top right).');return}
+  const ms=MONTHS.filter(m=>SEL.has(m)&&DATA[m]);
+  if(!ms.length){$('cmsg').innerHTML='<span class="warn">Select month(s) that have data.</span>';return}
+  try{for(const m of ms){const d=DATA[m],t=totals(d);
+      await db.collection('vocGrantMonths').doc(ymOf(m)).set({month:m,fy:FY,adm:d.adm,oth:d.oth,deduction:d.deduction||0,admTotal:t.a,othTotal:t.o,net:t.net,src:d.src||'',updatedAt:firebase.firestore.FieldValue.serverTimestamp()})}
+    $('cmsg').innerHTML='<span class="ok">Saved '+ms.length+' month(s): '+ms.join(', ')+' — now available in the Cheque Register VOC auto.</span>'}
+  catch(e){$('cmsg').innerHTML='<span class="bad">Save failed: '+esc(e.message)+'</span>'}};
+
+renderMonths();renderFiles();renderOut();
+</script>
+</body>
+</html>
